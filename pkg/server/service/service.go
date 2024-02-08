@@ -25,6 +25,7 @@ import (
 	"github.com/traefik/traefik/v3/pkg/server/cookie"
 	"github.com/traefik/traefik/v3/pkg/server/provider"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/failover"
+	lbp "github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/lb"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/mirror"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/wrr"
 )
@@ -110,6 +111,13 @@ func (m *Manager) BuildHTTP(rootCtx context.Context, serviceName string) (http.H
 	case conf.Weighted != nil:
 		var err error
 		lb, err = m.getWRRServiceHandler(ctx, serviceName, conf.Weighted)
+		if err != nil {
+			conf.AddError(err, true)
+			return nil, err
+		}
+	case conf.Leakybucket != nil:
+		var err error
+		lb, err = m.getLBServiceHandler(ctx, serviceName, conf.Leakybucket)
 		if err != nil {
 			conf.AddError(err, true)
 			return nil, err
@@ -249,13 +257,51 @@ func (m *Manager) getWRRServiceHandler(ctx context.Context, serviceName string, 
 	return balancer, nil
 }
 
+func (m *Manager) getLBServiceHandler(ctx context.Context, serviceName string, config *dynamic.LeakyBucket) (http.Handler, error) {
+
+	if config.Sticky != nil && config.Sticky.Cookie != nil {
+		config.Sticky.Cookie.Name = cookie.GetName(config.Sticky.Cookie.Name, serviceName)
+	}
+
+	balancer := lbp.New(config.Sticky, config.HealthCheck != nil)
+	for _, service := range shuffle(config.Services, m.rand) {
+		serviceHandler, err := m.BuildHTTP(ctx, service.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		balancer.Add(service.Name, serviceHandler, service.Burst, service.Average, service.Period, service.Priority)
+
+		if config.HealthCheck == nil {
+			continue
+		}
+
+		childName := service.Name
+		updater, ok := serviceHandler.(healthcheck.StatusUpdater)
+		if !ok {
+			return nil, fmt.Errorf("child service %v of %v not a healthcheck.StatusUpdater (%T)", childName, serviceName, serviceHandler)
+		}
+
+		if err := updater.RegisterStatusUpdater(func(up bool) {
+			balancer.SetStatus(ctx, childName, up)
+		}); err != nil {
+			return nil, fmt.Errorf("cannot register %v as updater for %v: %w", childName, serviceName, err)
+		}
+
+		log.Ctx(ctx).Debug().Str("parent", serviceName).Str("child", childName).
+			Msg("Child service will update parent on status change")
+	}
+
+	return balancer, nil
+}
+
 func (m *Manager) getLoadBalancerServiceHandler(ctx context.Context, serviceName string, info *runtime.ServiceInfo) (http.Handler, error) {
 	service := info.LoadBalancer
 
 	logger := log.Ctx(ctx)
 	logger.Debug().Msg("Creating load-balancer")
 
-	// TODO: should we keep this config value as Go is now handling stream response correctly?
+	// :TODO should we keep this config value as Go is now handling stream response correctly?
 	flushInterval := dynamic.DefaultFlushInterval
 	if service.ResponseForwarding != nil {
 		flushInterval = service.ResponseForwarding.FlushInterval
