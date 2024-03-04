@@ -17,27 +17,27 @@ func TestLBBalancer(t *testing.T) {
 	balancer.Add("first", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "first")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(2), Int(1), Int(1))
+	}), Int(1), Int(1), Int(3), Int(1))
 
 	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "second")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(2))
+	}), Int(1), Int(1), Int(2), Int(2))
 
 	balancer.Add("Third", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "Third")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(2))
+	}), Int(2), Int(1), Int(1), Int(3))
 
 	recorder := &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 4; i++ {
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		balancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 
-	assert.Equal(t, 2, recorder.save["first"])
+	assert.Equal(t, 1, recorder.save["first"])
 	assert.Equal(t, 1, recorder.save["second"])
-	assert.Equal(t, 1, recorder.save["Third"])
+	assert.Equal(t, 2, recorder.save["Third"])
 }
 
 func TestLBBalancerNoService(t *testing.T) {
@@ -55,16 +55,21 @@ func TestLBBalancerOneServerZeroBurst(t *testing.T) {
 	balancer.Add("first", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "first")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(1))
+	}), Int(1), Int(2), Int(1), Int(1))
 
-	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}), Int(0), Int(1), Int(1), Int(2))
+	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("server", "second")
+		rw.WriteHeader(http.StatusOK)
+	}), Int(0), Int(1), Int(1), Int(2))
 
 	recorder := &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 3; i++ {
+		time.Sleep(200 * time.Millisecond)
 		balancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 
 	assert.Equal(t, 3, recorder.save["first"])
+	assert.Equal(t, 0, recorder.save["second"])
 }
 
 func TestLBBalancerOneServerZeroRate(t *testing.T) {
@@ -75,14 +80,18 @@ func TestLBBalancerOneServerZeroRate(t *testing.T) {
 		rw.WriteHeader(http.StatusOK)
 	}), Int(1), Int(1), Int(1), Int(1))
 
-	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}), Int(0), Int(1), Int(1), Int(2))
+	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("server", "second")
+		rw.WriteHeader(http.StatusOK)
+	}), Int(1), Int(1), Int(1), Int(2))
 
 	recorder := &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 3; i++ {
 		balancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 
-	assert.Equal(t, 3, recorder.save["first"])
+	assert.Equal(t, 1, recorder.save["first"])
+	assert.Equal(t, 2, recorder.save["second"])
 }
 
 type key string
@@ -136,7 +145,7 @@ func TestLBBalancerDownThenUp(t *testing.T) {
 	balancer.Add("first", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "first")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(1))
+	}), Int(1), Int(1), Int(2), Int(1))
 
 	balancer.Add("second", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "second")
@@ -153,6 +162,7 @@ func TestLBBalancerDownThenUp(t *testing.T) {
 	balancer.SetStatus(context.WithValue(context.Background(), serviceName, "parent"), "second", true)
 	recorder = &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 2; i++ {
+		time.Sleep(1000 * time.Millisecond)
 		balancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 	assert.Equal(t, 1, recorder.save["first"])
@@ -175,26 +185,27 @@ func TestLBBalancerPropagate(t *testing.T) {
 	balancer2.Add("third", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "third")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(1))
+	}), Int(1), Int(1), Int(1), Int(3))
 	balancer2.Add("fourth", http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("server", "fourth")
 		rw.WriteHeader(http.StatusOK)
-	}), Int(1), Int(1), Int(1), Int(2))
+	}), Int(1), Int(1), Int(1), Int(4))
 
 	topBalancer := New(nil, true)
-	topBalancer.Add("balancer1", balancer1, Int(1), Int(1), Int(1), Int(1))
+	topBalancer.Add("balancer1", balancer1, Int(1), Int(4), Int(1), Int(1))
 	_ = balancer1.RegisterStatusUpdater(func(up bool) {
 		topBalancer.SetStatus(context.WithValue(context.Background(), serviceName, "top"), "balancer1", up)
 		// TODO(mpl): if test gets flaky, add channel or something here to signal that
 		// propagation is done, and wait on it before sending request.
 	})
-	topBalancer.Add("balancer2", balancer2, Int(1), Int(1), Int(1), Int(1))
+	topBalancer.Add("balancer2", balancer2, Int(1), Int(4), Int(1), Int(1))
 	_ = balancer2.RegisterStatusUpdater(func(up bool) {
 		topBalancer.SetStatus(context.WithValue(context.Background(), serviceName, "top"), "balancer2", up)
 	})
 
 	recorder := &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 8; i++ {
+		time.Sleep(250 * time.Millisecond)
 		topBalancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 	assert.Equal(t, 2, recorder.save["first"])
@@ -208,6 +219,7 @@ func TestLBBalancerPropagate(t *testing.T) {
 	balancer2.SetStatus(context.WithValue(context.Background(), serviceName, "top"), "fourth", false)
 	recorder = &responseRecorder{ResponseRecorder: httptest.NewRecorder(), save: map[string]int{}}
 	for i := 0; i < 8; i++ {
+		time.Sleep(200 * time.Millisecond)
 		topBalancer.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	}
 	assert.Equal(t, 2, recorder.save["first"])

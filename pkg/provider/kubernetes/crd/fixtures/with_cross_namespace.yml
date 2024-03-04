@@ -26,6 +26,11 @@ spec:
       - name: tr-svc-mirror2
         namespace: cross-ns
         kind: TraefikService
+      - name: tr-svc-lblb1
+        kind: TraefikService
+      - name: tr-svc-lblb2
+        namespace: cross-ns
+        kind: TraefikService
 
     - match: Host(`bar.com`) && PathPrefix(`/foo`)
       kind: Rule
@@ -99,6 +104,43 @@ spec:
         port: 80
 
 ---
+
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: tr-svc-lblb1
+  namespace: default
+
+spec:
+  leakyBucket:
+    services:
+      - name: whoami-svc
+        namespace: cross-ns
+        burst: 1
+        average: 1
+        period: 1
+        priority: 0
+        port: 80
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: tr-svc-lblb2
+  namespace: cross-ns
+
+spec:
+  leakyBucket:
+    services:
+      - name: whoami-svc
+        burst: 1
+        average: 1
+        period: 1
+        priority: 0
+        port: 80
+
+---
+
 apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
 metadata:

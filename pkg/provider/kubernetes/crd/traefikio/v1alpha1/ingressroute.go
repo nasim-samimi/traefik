@@ -39,6 +39,8 @@ type Route struct {
 	// Middlewares defines the list of references to Middleware resources.
 	// More info: https://doc.traefik.io/traefik/v3.0/routing/providers/kubernetes-crd/#kind-middleware
 	Middlewares []MiddlewareRef `json:"middlewares,omitempty"`
+	// By default, LeakuBucketLB is false.
+	LeakyBucketLB bool `json:"leakyBucketLB,omitempty"`
 }
 
 // TLS holds the TLS configuration.
@@ -118,6 +120,11 @@ type LoadBalancerSpec struct {
 	// Weight defines the weight and should only be specified when Name references a TraefikService object
 	// (and to be precise, one that embeds a Weighted Round Robin).
 	Weight *int `json:"weight,omitempty"`
+	//leaky bucket parameters
+	Burst    *int `json:"burst,omitempty"`
+	Average  *int `json:"average,omitempty"`
+	Period   *int `json:"period,omitempty"`
+	Priority *int `json:"priority,omitempty"`
 	// NativeLB controls, when creating the load-balancer,
 	// whether the LB's children are directly the pods IPs or if the only child is the Kubernetes Service clusterIP.
 	// The Kubernetes Service itself does load-balance to the pods.
