@@ -85,13 +85,14 @@ func (p *Provider) loadIngressRouteConfiguration(ctx context.Context, client Cli
 
 			if len(route.Services) > 1 {
 				if route.LeakyBucketLB {
+					print("LeakyBucket")
 					spec := traefikv1alpha1.TraefikServiceSpec{
 						LeakyBucket: &traefikv1alpha1.LeakyBucket{
 							Services: route.Services,
 						},
 					}
 
-					errBuild := cb.buildServicesLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
+					errBuild := cb.buildServicesLBLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
 					if errBuild != nil {
 						logger.Error().Err(errBuild).Send()
 						continue

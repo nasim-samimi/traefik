@@ -7,6 +7,11 @@
     </picture>
 </p>
 
+# Make image
+run make binary
+run docker build -t nasimm/traefik:2.4.0 .
+run docker push
+
 # Use leaky bucket load-balancer
 
 burst: integer value\
