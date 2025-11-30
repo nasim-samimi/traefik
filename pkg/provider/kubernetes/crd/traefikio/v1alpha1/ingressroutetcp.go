@@ -39,6 +39,9 @@ type RouteTCP struct {
 	Services []ServiceTCP `json:"services,omitempty"`
 	// Middlewares defines the list of references to MiddlewareTCP resources.
 	Middlewares []ObjectReference `json:"middlewares,omitempty"`
+
+	// By default, LeakuBucketLB is false.
+	LeakyBucketLB bool `json:"leakyBucketLB,omitempty"`
 }
 
 // TLSTCP holds the TLS configuration for an IngressRouteTCP.
@@ -103,6 +106,12 @@ type ServiceTCP struct {
 	// It allows services to be reachable when Traefik runs externally from the Kubernetes cluster but within the same network of the nodes.
 	// By default, NodePortLB is false.
 	NodePortLB bool `json:"nodePortLB,omitempty"`
+
+	//leaky bucket parameters
+	Burst    *int `json:"burst,omitempty"`
+	Average  *int `json:"average,omitempty"`
+	Period   *int `json:"period,omitempty"`
+	Priority *int `json:"priority,omitempty"`
 }
 
 // +genclient

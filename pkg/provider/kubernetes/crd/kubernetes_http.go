@@ -88,17 +88,43 @@ func (p *Provider) loadIngressRouteConfiguration(ctx context.Context, client Cli
 			serviceName := normalized
 
 			if len(route.Services) > 1 {
-				spec := traefikv1alpha1.TraefikServiceSpec{
-					Weighted: &traefikv1alpha1.WeightedRoundRobin{
-						Services: route.Services,
-					},
+				// spec := traefikv1alpha1.TraefikServiceSpec{
+				// 	Weighted: &traefikv1alpha1.WeightedRoundRobin{
+				// 		Services: route.Services,
+				// 	},
+				// }
+				if route.LeakyBucketLB {
+					print("LeakyBucket")
+					spec := traefikv1alpha1.TraefikServiceSpec{
+						LeakyBucket: &traefikv1alpha1.LeakyBucket{
+							Services: route.Services,
+						},
+					}
+
+					// errBuild := cb.buildServicesLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
+					// if errBuild != nil {
+					// 	logger.Error().Err(errBuild).Send()
+					// 	continue
+					// }
+					errBuild := cb.buildServicesLBLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
+					if errBuild != nil {
+						logger.Error().Err(errBuild).Send()
+						continue
+					}
+				} else {
+					spec := traefikv1alpha1.TraefikServiceSpec{
+						Weighted: &traefikv1alpha1.WeightedRoundRobin{
+							Services: route.Services,
+						},
+					}
+
+					errBuild := cb.buildServicesLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
+					if errBuild != nil {
+						logger.Error().Err(errBuild).Send()
+						continue
+					}
 				}
 
-				errBuild := cb.buildServicesLB(ctx, ingressRoute.Namespace, spec, serviceName, conf.Services)
-				if errBuild != nil {
-					logger.Error().Err(errBuild).Send()
-					continue
-				}
 			} else if len(route.Services) == 1 {
 				fullName, serversLB, err := cb.nameAndService(ctx, ingressRoute.Namespace, route.Services[0].LoadBalancerSpec)
 				if err != nil {
@@ -220,6 +246,8 @@ func (c configBuilder) buildTraefikService(ctx context.Context, tService *traefi
 		return c.buildServicesLB(ctx, tService.Namespace, tService.Spec, id, conf)
 	} else if tService.Spec.Mirroring != nil {
 		return c.buildMirroring(ctx, tService, id, conf)
+	} else if tService.Spec.LeakyBucket != nil {
+		return c.buildServicesLBLB(ctx, tService.Namespace, tService.Spec, id, conf)
 	}
 
 	return errors.New("unspecified service type")
@@ -274,6 +302,55 @@ func (c configBuilder) buildServicesLB(ctx context.Context, namespace string, tS
 		Weighted: &dynamic.WeightedRoundRobin{
 			Services: wrrServices,
 			Sticky:   sticky,
+		},
+	}
+	return nil
+}
+
+func (c configBuilder) buildServicesLBLB(ctx context.Context, namespace string, tService traefikv1alpha1.TraefikServiceSpec, id string, conf map[string]*dynamic.Service) error {
+	var lbServices []dynamic.LBService
+
+	for _, service := range tService.LeakyBucket.Services {
+		fullName, k8sService, err := c.nameAndService(ctx, namespace, service.LoadBalancerSpec)
+		if err != nil {
+			return err
+		}
+
+		if k8sService != nil {
+			conf[fullName] = k8sService
+		}
+
+		burst := service.Burst
+		if burst == nil {
+			burst = func(i int) *int { return &i }(1)
+		}
+
+		average := service.Average
+		if average == nil {
+			average = func(i int) *int { return &i }(1)
+		}
+		period := service.Period
+		if period == nil {
+			period = func(i int) *int { return &i }(1)
+		}
+		priority := service.Priority
+		if priority == nil {
+			priority = func(i int) *int { return &i }(1)
+		}
+
+		lbServices = append(lbServices, dynamic.LBService{
+			Name:     fullName,
+			Burst:    burst,
+			Average:  average,
+			Period:   period,
+			Priority: priority,
+		})
+	}
+
+	conf[id] = &dynamic.Service{
+		Leakybucket: &dynamic.LeakyBucket{
+			Services: lbServices,
+			Sticky:   tService.LeakyBucket.Sticky,
 		},
 	}
 	return nil

@@ -45,6 +45,12 @@ type ServiceUDP struct {
 	// It allows services to be reachable when Traefik runs externally from the Kubernetes cluster but within the same network of the nodes.
 	// By default, NodePortLB is false.
 	NodePortLB bool `json:"nodePortLB,omitempty"`
+
+	//leaky bucket parameters
+	Burst    *int `json:"burst,omitempty"`
+	Average  *int `json:"average,omitempty"`
+	Period   *int `json:"period,omitempty"`
+	Priority *int `json:"priority,omitempty"`
 }
 
 // +genclient

@@ -29,6 +29,7 @@ import (
 	"github.com/traefik/traefik/v3/pkg/server/middleware"
 	"github.com/traefik/traefik/v3/pkg/server/provider"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/failover"
+	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/lblb"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/mirror"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/p2c"
 	"github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/wrr"
@@ -127,6 +128,13 @@ func (m *Manager) BuildHTTP(rootCtx context.Context, serviceName string) (http.H
 	case conf.LoadBalancer != nil:
 		var err error
 		lb, err = m.getLoadBalancerServiceHandler(ctx, serviceName, conf)
+		if err != nil {
+			conf.AddError(err, true)
+			return nil, err
+		}
+	case conf.Leakybucket != nil:
+		var err error
+		lb, err = m.getLBServiceHandler(ctx, serviceName, conf.Leakybucket)
 		if err != nil {
 			conf.AddError(err, true)
 			return nil, err
@@ -278,6 +286,44 @@ func (m *Manager) getWRRServiceHandler(ctx context.Context, serviceName string, 
 	return balancer, nil
 }
 
+func (m *Manager) getLBServiceHandler(ctx context.Context, serviceName string, config *dynamic.LeakyBucket) (http.Handler, error) {
+
+	if config.Sticky != nil && config.Sticky.Cookie != nil {
+		config.Sticky.Cookie.Name = cookie.GetName(config.Sticky.Cookie.Name, serviceName)
+	}
+
+	balancer := lblb.New(config.Sticky, config.HealthCheck != nil)
+	for _, service := range shuffle(config.Services, m.rand) {
+		serviceHandler, err := m.BuildHTTP(ctx, service.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		balancer.Add(service.Name, serviceHandler, service.Burst, service.Average, service.Period, service.Priority)
+
+		if config.HealthCheck == nil {
+			continue
+		}
+
+		childName := service.Name
+		updater, ok := serviceHandler.(healthcheck.StatusUpdater)
+		if !ok {
+			return nil, fmt.Errorf("child service %v of %v not a healthcheck.StatusUpdater (%T)", childName, serviceName, serviceHandler)
+		}
+
+		if err := updater.RegisterStatusUpdater(func(up bool) {
+			balancer.SetStatus(ctx, childName, up)
+		}); err != nil {
+			return nil, fmt.Errorf("cannot register %v as updater for %v: %w", childName, serviceName, err)
+		}
+
+		log.Ctx(ctx).Debug().Str("parent", serviceName).Str("child", childName).
+			Msg("Child service will update parent on status change")
+	}
+
+	return balancer, nil
+}
+
 func (m *Manager) getServiceHandler(ctx context.Context, service dynamic.WRRService) (http.Handler, error) {
 	switch {
 	case service.Status != nil:
@@ -343,6 +389,8 @@ func (m *Manager) getLoadBalancerServiceHandler(ctx context.Context, serviceName
 	switch service.Strategy {
 	// Here we are handling the empty value to comply with providers that are not applying defaults (e.g. REST provider)
 	// TODO: remove this when all providers apply default values.
+	case dynamic.BalancerStrategyLBLB:
+		lb = lblb.New(service.Sticky, service.HealthCheck != nil)
 	case dynamic.BalancerStrategyWRR, "":
 		lb = wrr.New(service.Sticky, service.HealthCheck != nil)
 	case dynamic.BalancerStrategyP2C:

@@ -57,6 +57,7 @@ type Service struct {
 	Weighted     *WeightedRoundRobin  `json:"weighted,omitempty" toml:"weighted,omitempty" yaml:"weighted,omitempty" label:"-" export:"true"`
 	Mirroring    *Mirroring           `json:"mirroring,omitempty" toml:"mirroring,omitempty" yaml:"mirroring,omitempty" label:"-" export:"true"`
 	Failover     *Failover            `json:"failover,omitempty" toml:"failover,omitempty" yaml:"failover,omitempty" label:"-" export:"true"`
+	Leakybucket  *LeakyBucket         `json:"leakybucket,omitempty" toml:"leakybucket,omitempty" yaml:"leakybucket,omitempty" label:"-" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -215,6 +216,8 @@ func (c *Cookie) SetDefaults() {
 type BalancerStrategy string
 
 const (
+	// BalancerStrategyLBLB is the Leaky bucket strategy.
+	BalancerStrategyLBLB BalancerStrategy = "lblb"
 	// BalancerStrategyWRR is the weighted round-robin strategy.
 	BalancerStrategyWRR BalancerStrategy = "wrr"
 	// BalancerStrategyP2C is the power of two choices strategy.
@@ -288,6 +291,10 @@ func (r *ResponseForwarding) SetDefaults() {
 type Server struct {
 	URL          string `json:"url,omitempty" toml:"url,omitempty" yaml:"url,omitempty"`
 	Weight       *int   `json:"weight,omitempty" toml:"weight,omitempty" yaml:"weight,omitempty" export:"true"`
+	Burst        *int   `json:"burst,omitempty" toml:"burst,omitempty" yaml:"burst,omitempty" export:"true"`
+	Average      *int   `json:"average,omitempty" toml:"average,omitempty" yaml:"average,omitempty" export:"true"`
+	Period       *int   `json:"period,omitempty" toml:"period,omitempty" yaml:"period,omitempty" export:"true"`
+	Priority     *int   `json:"priority,omitempty" toml:"priority,omitempty" yaml:"priority,omitempty" export:"true"`
 	PreservePath bool   `json:"preservePath,omitempty" toml:"preservePath,omitempty" yaml:"preservePath,omitempty" export:"true"`
 	Fenced       bool   `json:"fenced,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-"`
 	// Scheme can only be defined with label Providers.
@@ -368,4 +375,39 @@ func (f *ForwardingTimeouts) SetDefaults() {
 	f.DialTimeout = ptypes.Duration(30 * time.Second)
 	f.IdleConnTimeout = ptypes.Duration(90 * time.Second)
 	f.PingTimeout = ptypes.Duration(15 * time.Second)
+}
+
+// LeakyBucket is a leaky bucket load-balancer of services.
+type LeakyBucket struct {
+	Services []LBService `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty" export:"true"`
+	Sticky   *Sticky     `json:"sticky,omitempty" toml:"sticky,omitempty" yaml:"sticky,omitempty" export:"true"`
+	// HealthCheck enables automatic self-healthcheck for this service, i.e.
+	// whenever one of its children is reported as down, this service becomes aware of it,
+	// and takes it into account (i.e. it ignores the down child) when running the
+	// load-balancing algorithm. In addition, if the parent of this service also has
+	// HealthCheck enabled, this service reports to its parent any status change.
+	HealthCheck *HealthCheck `json:"healthCheck,omitempty" toml:"healthCheck,omitempty" yaml:"healthCheck,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// LBService is a reference to a service load-balanced with leaky buckets.
+type LBService struct {
+	Name     string `json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty" export:"true"`
+	Burst    *int   `json:"burst,omitempty" toml:"burst,omitempty" yaml:"burst,omitempty" export:"true"`
+	Average  *int   `json:"average,omitempty" toml:"average,omitempty" yaml:"average,omitempty" export:"true"`
+	Period   *int   `json:"period,omitempty" toml:"period,omitempty" yaml:"period,omitempty" export:"true"`
+	Priority *int   `json:"priority,omitempty" toml:"priority,omitempty" yaml:"priority,omitempty" export:"true"`
+}
+
+// SetDefaults Default values for a LBService.
+func (l *LBService) SetDefaults() {
+	defaultBurst := 1
+	l.Burst = &defaultBurst
+	defaultAverage := 1
+	l.Average = &defaultAverage
+	defaultPeriod := 1
+	l.Period = &defaultPeriod
+	defaultPriority := 1
+	l.Priority = &defaultPriority
 }

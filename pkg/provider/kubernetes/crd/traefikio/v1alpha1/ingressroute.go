@@ -48,6 +48,9 @@ type Route struct {
 	// Observability defines the observability configuration for a router.
 	// More info: https://doc.traefik.io/traefik/v3.5/routing/routers/#observability
 	Observability *dynamic.RouterObservabilityConfig `json:"observability,omitempty"`
+
+	// By default, LeakuBucketLB is false.
+	LeakyBucketLB bool `json:"leakyBucketLB,omitempty"`
 }
 
 // TLS holds the TLS configuration.
@@ -117,7 +120,7 @@ type LoadBalancerSpec struct {
 	// Supported values are: wrr (Weighed round-robin) and p2c (Power of two choices).
 	// RoundRobin value is deprecated and supported for backward compatibility.
 	// TODO: when the deprecated RoundRobin value will be removed, set the default value to wrr.
-	// +kubebuilder:validation:Enum=wrr;p2c;RoundRobin
+	// +kubebuilder:validation:Enum=wrr;p2c;RoundRobin;lblb
 	Strategy dynamic.BalancerStrategy `json:"strategy,omitempty"`
 	// PassHostHeader defines whether the client Host header is forwarded to the upstream Kubernetes Service.
 	// By default, passHostHeader is true.
@@ -144,6 +147,12 @@ type LoadBalancerSpec struct {
 	NodePortLB bool `json:"nodePortLB,omitempty"`
 	// Healthcheck defines health checks for ExternalName services.
 	HealthCheck *ServerHealthCheck `json:"healthCheck,omitempty"`
+
+	//leaky bucket parameters
+	Burst    *int `json:"burst,omitempty"`
+	Average  *int `json:"average,omitempty"`
+	Period   *int `json:"period,omitempty"`
+	Priority *int `json:"priority,omitempty"`
 }
 
 type ResponseForwarding struct {
