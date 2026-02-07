@@ -221,7 +221,7 @@ func (b *LBBalancer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	
 	log.Debug().
-		Dur("duration", lbDuration).
+		Int64("duration_us_lb", lbDuration.Microseconds()).
 		Msg("load balancer response time")
 
 	// res := server.bucket.Reserve()

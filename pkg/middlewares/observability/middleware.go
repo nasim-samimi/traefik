@@ -74,6 +74,6 @@ func (w *middlewareTracing) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	log.Ctx(req.Context()).Debug().
 		Str(logs.MiddlewareName, w.name).
-		Dur("duration", time.Since(start)).
+		Int64("duration_us_middleware", time.Since(start).Microseconds()).
 		Msg("middleware response time")
 }
