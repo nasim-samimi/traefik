@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -198,12 +199,18 @@ func (b *LBBalancer) nextServer() (*namedHandler, error) {
 // }
 
 func (b *LBBalancer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// Start timing for load balancer overhead
+	lbStart := time.Now()
 
 	if len(b.handlers) == 0 || len(b.status) == 0 {
 		http.Error(w, errNoAvailableServer.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	server, err := b.nextServer()
+	
+	// Measure load balancer duration (without OpenTelemetry overhead)
+	lbDuration := time.Since(lbStart)
+	
 	if err != nil {
 		if errors.Is(err, errNoAvailableServer) {
 			http.Error(w, errNoAvailableServer.Error(), http.StatusServiceUnavailable)
@@ -213,6 +220,9 @@ func (b *LBBalancer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 		return
 	}
+	
+	// Add timing as response header (in microseconds)
+	w.Header().Set("X-LB-Duration-Us", fmt.Sprintf("%d", lbDuration.Microseconds()))
 
 	// res := server.bucket.Reserve()
 	// if !res.OK() {
