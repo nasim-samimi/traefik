@@ -174,7 +174,9 @@ func (b *LBBalancer) nextServer() (*namedHandler, error) {
 		// Pick handler with highest priority.
 		handler = heap.Pop(b).(*namedHandler)
 		log.Debug().Msgf("Handler poped: %s", handler.name)
+		admissionStart := time.Now()
 		handler.canAllow = handler.bucket.Allow()
+		log.Debug().Msgf("admission decision: %s allow=%t in %d us", handler.name, handler.canAllow, time.Since(admissionStart).Microseconds())
 		poppedHandlers = append(poppedHandlers, handler)
 		// heap.Push(b, handler) // not to be immediately pushed back
 
@@ -220,9 +222,7 @@ func (b *LBBalancer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	
-	log.Info().
-		Int64("duration_us_lb", lbDuration.Microseconds()).
-		Msg("load balancer response time")
+	log.Debug().Msgf("load balancer response time: %d us (server=%s)", lbDuration.Microseconds(), server.name)
 
 	// res := server.bucket.Reserve()
 	// if !res.OK() {
