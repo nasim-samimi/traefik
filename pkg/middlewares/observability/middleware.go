@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/containous/alice"
 	"github.com/rs/zerolog/log"
@@ -56,6 +57,8 @@ type middlewareTracing struct {
 }
 
 func (w *middlewareTracing) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+
 	if tracer := tracing.TracerFromContext(req.Context()); tracer != nil {
 		tracingCtx, span := tracer.Start(req.Context(), w.typeName, trace.WithSpanKind(w.spanKind))
 		defer span.End()
@@ -68,4 +71,9 @@ func (w *middlewareTracing) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if w.next != nil {
 		w.next.ServeHTTP(rw, req)
 	}
+
+	log.Ctx(req.Context()).Debug().
+		Str(logs.MiddlewareName, w.name).
+		Dur("duration", time.Since(start)).
+		Msg("middleware response time")
 }
