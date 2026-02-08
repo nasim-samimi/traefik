@@ -174,7 +174,7 @@ func (b *LBBalancer) nextServer() (*namedHandler, error) {
 		// Pick handler with highest priority.
 		handler = heap.Pop(b).(*namedHandler)
 		// log.Debug().Msgf("Handler poped: %s", handler.name)
-		admissionStart := time.Now()
+		// admissionStart := time.Now()
 		handler.canAllow = handler.bucket.Allow()
 		// log.Info().Msgf("admission decision: %s allow=%t in %d us", handler.name, handler.canAllow, time.Since(admissionStart).Microseconds())
 		poppedHandlers = append(poppedHandlers, handler)
