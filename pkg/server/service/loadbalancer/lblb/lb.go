@@ -173,23 +173,23 @@ func (b *LBBalancer) nextServer() (*namedHandler, error) {
 		}
 		// Pick handler with highest priority.
 		handler = heap.Pop(b).(*namedHandler)
-		log.Debug().Msgf("Handler poped: %s", handler.name)
+		// log.Debug().Msgf("Handler poped: %s", handler.name)
 		admissionStart := time.Now()
 		handler.canAllow = handler.bucket.Allow()
-		log.Debug().Msgf("admission decision: %s allow=%t in %d us", handler.name, handler.canAllow, time.Since(admissionStart).Microseconds())
+		// log.Info().Msgf("admission decision: %s allow=%t in %d us", handler.name, handler.canAllow, time.Since(admissionStart).Microseconds())
 		poppedHandlers = append(poppedHandlers, handler)
 		// heap.Push(b, handler) // not to be immediately pushed back
 
 		if _, ok := b.status[handler.name]; ok && handler.canAllow {
 			break
 		}
-		log.Debug().Msgf("Service bucket not allowed: %s", handler.name)
+		// log.Debug().Msgf("Service bucket not allowed: %s", handler.name)
 
 	}
 	for _, handler := range poppedHandlers {
 		heap.Push(b, handler)
 	}
-	log.Debug().Msgf("Service selected by LB: %s", handler.name)
+	// log.Debug().Msgf("Service selected by LB: %s", handler.name)
 	return handler, nil
 }
 
